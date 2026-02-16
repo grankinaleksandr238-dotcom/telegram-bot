@@ -3,8 +3,8 @@ import logging
 import sqlite3
 import random
 from datetime import datetime, timedelta
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, CommandObject
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -18,7 +18,6 @@ ADMINS = [8127013147]
 def init_db():
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
-    # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -29,7 +28,6 @@ def init_db():
             last_bonus TEXT
         )
     ''')
-    # Таблица каналов для проверки подписки
     cur.execute('''
         CREATE TABLE IF NOT EXISTS channels (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +35,6 @@ def init_db():
             title TEXT
         )
     ''')
-    # Таблица товаров магазина
     cur.execute('''
         CREATE TABLE IF NOT EXISTS shop_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +43,6 @@ def init_db():
             price INTEGER
         )
     ''')
-    # Таблица покупок
     cur.execute('''
         CREATE TABLE IF NOT EXISTS purchases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +53,6 @@ def init_db():
             FOREIGN KEY(item_id) REFERENCES shop_items(id)
         )
     ''')
-    # Таблица промокодов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS promocodes (
             code TEXT PRIMARY KEY,
@@ -66,7 +61,6 @@ def init_db():
             used_count INTEGER DEFAULT 0
         )
     ''')
-    # Таблица розыгрышей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS giveaways (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +70,6 @@ def init_db():
             winner_id INTEGER
         )
     ''')
-    # Таблица участников розыгрышей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS participants (
             user_id INTEGER,
@@ -123,6 +116,15 @@ class AddBalance(StatesGroup):
 class CasinoBet(StatesGroup):
     amount = State()
 
+class PromoActivate(StatesGroup):
+    code = State()
+
+class CompleteGiveaway(StatesGroup):
+    giveaway_id = State()
+
+class PickWinner(StatesGroup):
+    giveaway_id = State()
+
 # ===== ИНИЦИАЛИЗАЦИЯ =====
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
@@ -140,7 +142,7 @@ async def check_subscription(user_id: int) -> bool:
     channels = cur.fetchall()
     conn.close()
     if not channels:
-        return True  # если каналов нет, считаем подписку выполненной
+        return True
     for ch in channels:
         chat_id = ch[0]
         try:
@@ -148,30 +150,26 @@ async def check_subscription(user_id: int) -> bool:
             if member.status in ['left', 'kicked']:
                 return False
         except Exception:
-            # Если бот не админ или канал недоступен, пропускаем проверку? Лучше требовать подписки.
             return False
     return True
 
 def subscription_keyboard():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Я подписался", callback_data="check_sub")]
     ])
-    return kb
 
-# ===== КЛАВИАТУРЫ =====
-def main_keyboard(user_id):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+def main_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
          InlineKeyboardButton(text="🎁 Бонус", callback_data="bonus")],
         [InlineKeyboardButton(text="🛒 Магазин", callback_data="shop"),
          InlineKeyboardButton(text="🎰 Казино", callback_data="casino")],
         [InlineKeyboardButton(text="🎟 Промокод", callback_data="promo"),
-         InlineKeyboardButton(text="🎲 Розыгрыши", callback_data="giveaways")],
+         InlineKeyboardButton(text="🎲 Розыгрыши", callback_data="giveaways")]
     ])
-    return kb
 
 def admin_keyboard():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Создать розыгрыш", callback_data="admin_create")],
         [InlineKeyboardButton(text="📋 Активные розыгрыши", callback_data="admin_list")],
         [InlineKeyboardButton(text="✅ Завершить розыгрыш", callback_data="admin_complete")],
@@ -182,36 +180,30 @@ def admin_keyboard():
         [InlineKeyboardButton(text="➖ Удалить канал", callback_data="admin_remove_channel")],
         [InlineKeyboardButton(text="📦 Управление магазином", callback_data="admin_shop_menu")],
         [InlineKeyboardButton(text="🎫 Управление промокодами", callback_data="admin_promo_menu")],
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")]
     ])
-    return kb
 
 def back_to_admin_keyboard():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="« Назад в админку", callback_data="admin_back")]
     ])
-    return kb
 
 def shop_admin_keyboard():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Добавить товар", callback_data="admin_shop_add")],
         [InlineKeyboardButton(text="➖ Удалить товар", callback_data="admin_shop_remove")],
         [InlineKeyboardButton(text="📋 Список товаров", callback_data="admin_shop_list")],
-        [InlineKeyboardButton(text="« Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text="« Назад", callback_data="admin_back")]
     ])
-    return kb
 
 def promo_admin_keyboard():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Создать промокод", callback_data="admin_promo_create")],
         [InlineKeyboardButton(text="📋 Список промокодов", callback_data="admin_promo_list")],
-        [InlineKeyboardButton(text="« Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text="« Назад", callback_data="admin_back")]
     ])
-    return kb
 
-# ===== ХЭНДЛЕРЫ =====
-
-# Старт
+# ===== СТАРТ =====
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     user_id = message.from_user.id
@@ -223,27 +215,26 @@ async def cmd_start(message: Message):
                 (user_id, username, first_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 0))
     conn.commit()
     conn.close()
-    # Проверка подписки
     if not await check_subscription(user_id):
-        await message.answer("❗️ Для доступа к боту нужно подписаться на наши каналы.\nПосле подписки нажми кнопку ниже.",
-                             reply_markup=subscription_keyboard())
+        await message.answer("❗️ Для доступа к боту нужно подписаться на наши каналы.\nПосле подписки нажми кнопку ниже.", reply_markup=subscription_keyboard())
         return
-    await message.answer(f"Привет, {first_name}!\nДобро пожаловать в бота!",
-                         reply_markup=main_keyboard(user_id))
+    await message.answer(f"Привет, {first_name}!\nДобро пожаловать в бота!", reply_markup=main_keyboard())
 
-# Проверка подписки (кнопка)
-@dp.callback_query(F.data == "check_sub")
+# ===== ПРОВЕРКА ПОДПИСКИ =====
+@dp.callback_query(lambda c: c.data == "check_sub")
 async def check_sub_callback(callback: CallbackQuery):
     if await check_subscription(callback.from_user.id):
-        await callback.message.edit_text("✅ Подписка подтверждена! Добро пожаловать.",
-                                         reply_markup=main_keyboard(callback.from_user.id))
+        await callback.message.edit_text("✅ Подписка подтверждена! Добро пожаловать.", reply_markup=main_keyboard())
     else:
         await callback.answer("❌ Вы ещё не подписались на все каналы!", show_alert=True)
 
-# Профиль
-@dp.callback_query(F.data == "profile")
+# ===== ПРОФИЛЬ =====
+@dp.callback_query(lambda c: c.data == "profile")
 async def profile_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
+    if not await check_subscription(user_id):
+        await callback.message.edit_text("❗️ Сначала подпишитесь на каналы.", reply_markup=subscription_keyboard())
+        return
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
     cur.execute("SELECT balance, joined_date FROM users WHERE user_id=?", (user_id,))
@@ -254,10 +245,10 @@ async def profile_callback(callback: CallbackQuery):
         text = f"👤 Ваш профиль:\n💰 Баланс: {balance} монет\n📅 Зарегистрирован: {joined}"
     else:
         text = "Профиль не найден"
-    await callback.message.edit_text(text, reply_markup=main_keyboard(user_id))
+    await callback.message.edit_text(text, reply_markup=main_keyboard())
 
-# Бонус
-@dp.callback_query(F.data == "bonus")
+# ===== БОНУС =====
+@dp.callback_query(lambda c: c.data == "bonus")
 async def bonus_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     if not await check_subscription(user_id):
@@ -278,15 +269,14 @@ async def bonus_callback(callback: CallbackQuery):
             await callback.answer(f"Бонус можно будет получить через {hours} ч {minutes} мин", show_alert=True)
             conn.close()
             return
-    # Начисляем бонус
-    bonus = random.randint(5, 15)  # небольшой бонус
+    bonus = random.randint(5, 15)
     cur.execute("UPDATE users SET balance = balance + ?, last_bonus = ? WHERE user_id=?", (bonus, now.strftime("%Y-%m-%d %H:%M:%S"), user_id))
     conn.commit()
     conn.close()
-    await callback.message.edit_text(f"🎉 Вы получили бонус {bonus} монет!", reply_markup=main_keyboard(user_id))
+    await callback.message.edit_text(f"🎉 Вы получили бонус {bonus} монет!", reply_markup=main_keyboard())
 
-# Магазин (список товаров)
-@dp.callback_query(F.data == "shop")
+# ===== МАГАЗИН =====
+@dp.callback_query(lambda c: c.data == "shop")
 async def shop_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     if not await check_subscription(user_id):
@@ -298,7 +288,7 @@ async def shop_callback(callback: CallbackQuery):
     items = cur.fetchall()
     conn.close()
     if not items:
-        await callback.message.edit_text("🛒 В магазине пока нет товаров.", reply_markup=main_keyboard(user_id))
+        await callback.message.edit_text("🛒 В магазине пока нет товаров.", reply_markup=main_keyboard())
         return
     text = "🛒 Магазин:\n\n"
     kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -309,10 +299,12 @@ async def shop_callback(callback: CallbackQuery):
     kb.inline_keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_main")])
     await callback.message.edit_text(text, reply_markup=kb)
 
-# Покупка товара
-@dp.callback_query(F.data.startswith("buy_"))
+@dp.callback_query(lambda c: c.data.startswith("buy_"))
 async def buy_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
+    if not await check_subscription(user_id):
+        await callback.message.edit_text("❗️ Сначала подпишитесь на каналы.", reply_markup=subscription_keyboard())
+        return
     item_id = int(callback.data.split("_")[1])
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
@@ -329,23 +321,21 @@ async def buy_callback(callback: CallbackQuery):
         await callback.answer("Недостаточно монет!", show_alert=True)
         conn.close()
         return
-    # Списание
     cur.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (price, user_id))
     cur.execute("INSERT INTO purchases (user_id, item_id, purchase_date) VALUES (?, ?, ?)",
                 (user_id, item_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.commit()
     conn.close()
     await callback.answer(f"✅ Вы купили {name}! Скоро админ свяжется с вами.", show_alert=True)
-    # Уведомление админам
     for admin_id in ADMINS:
         try:
             await bot.send_message(admin_id, f"🛒 Покупка: пользователь {user_id} купил {name} за {price} монет.")
         except:
             pass
-    await callback.message.edit_text(f"✅ Покупка совершена!", reply_markup=main_keyboard(user_id))
+    await callback.message.edit_text(f"✅ Покупка совершена!", reply_markup=main_keyboard())
 
-# Казино
-@dp.callback_query(F.data == "casino")
+# ===== КАЗИНО =====
+@dp.callback_query(lambda c: c.data == "casino")
 async def casino_callback(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     if not await check_subscription(user_id):
@@ -365,6 +355,10 @@ async def casino_bet_amount(message: Message, state: FSMContext):
         await message.answer("Ставка должна быть положительной.")
         return
     user_id = message.from_user.id
+    if not await check_subscription(user_id):
+        await message.answer("❗️ Сначала подпишитесь на каналы.", reply_markup=subscription_keyboard())
+        await state.clear()
+        return
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
     cur.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
@@ -372,8 +366,8 @@ async def casino_bet_amount(message: Message, state: FSMContext):
     if amount > balance:
         await message.answer("Недостаточно монет.")
         conn.close()
+        await state.clear()
         return
-    # Игра: 30% шанс удвоения, 70% проигрыш (отрицательное матожидание)
     win = random.random() < 0.3
     if win:
         reward = amount * 2
@@ -389,22 +383,24 @@ async def casino_bet_amount(message: Message, state: FSMContext):
     await message.answer(f"{result_text}\n💰 Текущий баланс: {new_balance}")
     await state.clear()
 
-# Промокод
-@dp.callback_query(F.data == "promo")
+# ===== ПРОМОКОД =====
+@dp.callback_query(lambda c: c.data == "promo")
 async def promo_callback(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     if not await check_subscription(user_id):
         await callback.message.edit_text("❗️ Сначала подпишитесь на каналы.", reply_markup=subscription_keyboard())
         return
     await callback.message.edit_text("Введите промокод:")
-    # можно использовать FSM, но проще через команду, но сделаем через FSM
-    # для простоты сделаем отдельное состояние
-    await state.set_state("promo")
+    await state.set_state(PromoActivate.code)
 
-@dp.message(F.text, State("promo"))
+@dp.message(PromoActivate.code)
 async def promo_activate(message: Message, state: FSMContext):
     code = message.text.strip().upper()
     user_id = message.from_user.id
+    if not await check_subscription(user_id):
+        await message.answer("❗️ Сначала подпишитесь на каналы.", reply_markup=subscription_keyboard())
+        await state.clear()
+        return
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
     cur.execute("SELECT reward, max_uses, used_count FROM promocodes WHERE code=?", (code,))
@@ -420,7 +416,6 @@ async def promo_activate(message: Message, state: FSMContext):
         await state.clear()
         conn.close()
         return
-    # Начисляем
     cur.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
     cur.execute("UPDATE promocodes SET used_count = used_count + 1 WHERE code=?", (code,))
     conn.commit()
@@ -428,8 +423,8 @@ async def promo_activate(message: Message, state: FSMContext):
     await message.answer(f"✅ Промокод активирован! Вы получили {reward} монет.")
     await state.clear()
 
-# Розыгрыши (список активных)
-@dp.callback_query(F.data == "giveaways")
+# ===== РОЗЫГРЫШИ =====
+@dp.callback_query(lambda c: c.data == "giveaways")
 async def giveaways_list(callback: CallbackQuery):
     user_id = callback.from_user.id
     if not await check_subscription(user_id):
@@ -441,7 +436,7 @@ async def giveaways_list(callback: CallbackQuery):
     rows = cur.fetchall()
     conn.close()
     if not rows:
-        await callback.message.edit_text("Сейчас нет активных розыгрышей.", reply_markup=main_keyboard(user_id))
+        await callback.message.edit_text("Сейчас нет активных розыгрышей.", reply_markup=main_keyboard())
         return
     text = "🎁 Активные розыгрыши:\n\n"
     kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -452,21 +447,21 @@ async def giveaways_list(callback: CallbackQuery):
     kb.inline_keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_main")])
     await callback.message.edit_text(text, reply_markup=kb)
 
-# Участие в розыгрыше
-@dp.callback_query(F.data.startswith("part_"))
+@dp.callback_query(lambda c: c.data.startswith("part_"))
 async def participate_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
+    if not await check_subscription(user_id):
+        await callback.message.edit_text("❗️ Сначала подпишитесь на каналы.", reply_markup=subscription_keyboard())
+        return
     giveaway_id = int(callback.data.split("_")[1])
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
-    # Проверка активности
     cur.execute("SELECT status FROM giveaways WHERE id=?", (giveaway_id,))
     row = cur.fetchone()
     if not row or row[0] != 'active':
         await callback.answer("Розыгрыш не активен", show_alert=True)
         conn.close()
         return
-    # Проверка участия
     cur.execute("SELECT * FROM participants WHERE user_id=? AND giveaway_id=?", (user_id, giveaway_id))
     if cur.fetchone():
         await callback.answer("Вы уже участвуете", show_alert=True)
@@ -477,10 +472,10 @@ async def participate_callback(callback: CallbackQuery):
     conn.close()
     await callback.answer("✅ Вы участвуете в розыгрыше!", show_alert=True)
 
-# Назад в главное меню
-@dp.callback_query(F.data == "back_main")
+# ===== НАЗАД В ГЛАВНОЕ МЕНЮ =====
+@dp.callback_query(lambda c: c.data == "back_main")
 async def back_main_callback(callback: CallbackQuery):
-    await callback.message.edit_text("Главное меню:", reply_markup=main_keyboard(callback.from_user.id))
+    await callback.message.edit_text("Главное меню:", reply_markup=main_keyboard())
 
 # ===== АДМИНКА =====
 @dp.message(Command("admin"))
@@ -490,8 +485,8 @@ async def cmd_admin(message: Message):
         return
     await message.answer("Панель администратора:", reply_markup=admin_keyboard())
 
-# Обработка админ-кнопок
-@dp.callback_query(F.data.startswith("admin_"))
+# ===== ОБРАБОТЧИК АДМИН-КОЛБЭКОВ =====
+@dp.callback_query(lambda c: c.data.startswith("admin_"))
 async def admin_callback(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("Нет прав", show_alert=True)
@@ -517,9 +512,10 @@ async def admin_callback(callback: CallbackQuery, state: FSMContext):
             await callback.message.edit_text(text, reply_markup=back_to_admin_keyboard())
     elif action == "complete":
         await callback.message.edit_text("Введите ID розыгрыша для завершения:", reply_markup=back_to_admin_keyboard())
-        # можно сделать через FSM, для простоты потом
+        await state.set_state(CompleteGiveaway.giveaway_id)
     elif action == "pick_winner":
         await callback.message.edit_text("Введите ID розыгрыша для выбора победителя:", reply_markup=back_to_admin_keyboard())
+        await state.set_state(PickWinner.giveaway_id)
     elif action == "broadcast":
         await callback.message.edit_text("Введите сообщение для рассылки:", reply_markup=back_to_admin_keyboard())
         await state.set_state(Broadcast.message)
@@ -547,7 +543,7 @@ async def admin_callback(callback: CallbackQuery, state: FSMContext):
         text = f"📊 Статистика:\n👥 Пользователей: {users}\n💰 Всего монет: {total_balance}\n🎁 Активных розыгрышей: {active_giveaways}\n🛒 Товаров в магазине: {shop_items}"
         await callback.message.edit_text(text, reply_markup=back_to_admin_keyboard())
 
-# Создание розыгрыша (FSM)
+# ===== СОЗДАНИЕ РОЗЫГРЫША =====
 @dp.message(CreateGiveaway.prize)
 async def create_prize(message: Message, state: FSMContext):
     await state.update_data(prize=message.text)
@@ -567,7 +563,106 @@ async def create_end_date(message: Message, state: FSMContext):
     await message.answer(f"✅ Розыгрыш '{prize}' создан до {end_date}.")
     await state.clear()
 
-# Добавление канала
+# ===== ЗАВЕРШЕНИЕ РОЗЫГРЫША =====
+@dp.message(CompleteGiveaway.giveaway_id)
+async def complete_giveaway(message: Message, state: FSMContext):
+    try:
+        gid = int(message.text)
+    except:
+        await message.answer("Введите число.")
+        return
+    conn = sqlite3.connect('database.db')
+    cur = conn.cursor()
+    cur.execute("UPDATE giveaways SET status='completed' WHERE id=? AND status='active'", (gid,))
+    if cur.rowcount:
+        await message.answer(f"✅ Розыгрыш ID {gid} завершён.")
+    else:
+        await message.answer("❌ Розыгрыш не найден или уже завершён.")
+    conn.commit()
+    conn.close()
+    await state.clear()
+
+# ===== ВЫБОР ПОБЕДИТЕЛЯ =====
+@dp.message(PickWinner.giveaway_id)
+async def pick_winner(message: Message, state: FSMContext):
+    try:
+        gid = int(message.text)
+    except:
+        await message.answer("Введите число.")
+        return
+    conn = sqlite3.connect('database.db')
+    cur = conn.cursor()
+    cur.execute("SELECT prize FROM giveaways WHERE id=? AND status='active'", (gid,))
+    row = cur.fetchone()
+    if not row:
+        await message.answer("❌ Активный розыгрыш не найден.")
+        conn.close()
+        await state.clear()
+        return
+    prize = row[0]
+    cur.execute("SELECT user_id FROM participants WHERE giveaway_id=?", (gid,))
+    participants = cur.fetchall()
+    if not participants:
+        await message.answer("❌ В розыгрыше нет участников.")
+        conn.close()
+        await state.clear()
+        return
+    winner_id = random.choice(participants)[0]
+    cur.execute("UPDATE giveaways SET status='completed', winner_id=? WHERE id=?", (winner_id, gid))
+    conn.commit()
+    conn.close()
+    await message.answer(f"🏆 Победитель розыгрыша '{prize}': {winner_id}")
+    try:
+        await bot.send_message(winner_id, f"🎉 Поздравляем! Вы победили в розыгрыше '{prize}'! Свяжитесь с админом для получения приза.")
+    except:
+        pass
+    await state.clear()
+
+# ===== РАССЫЛКА =====
+@dp.message(Broadcast.message)
+async def broadcast_message(message: Message, state: FSMContext):
+    text = message.text
+    conn = sqlite3.connect('database.db')
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM users")
+    users = cur.fetchall()
+    conn.close()
+    success = 0
+    for user in users:
+        try:
+            await bot.send_message(user[0], text)
+            success += 1
+            await asyncio.sleep(0.05)
+        except:
+            pass
+    await message.answer(f"✅ Рассылка завершена. Отправлено {success} пользователям.")
+    await state.clear()
+
+# ===== НАЧИСЛЕНИЕ МОНЕТ =====
+@dp.message(AddBalance.user_id)
+async def add_balance_user(message: Message, state: FSMContext):
+    parts = message.text.split()
+    if len(parts) != 2:
+        await message.answer("Введите ID и сумму через пробел.")
+        return
+    try:
+        target_id = int(parts[0])
+        amount = int(parts[1])
+    except:
+        await message.answer("Неверный формат.")
+        return
+    conn = sqlite3.connect('database.db')
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, target_id))
+    if cur.rowcount:
+        await message.answer(f"✅ Пользователю {target_id} начислено {amount} монет.")
+    else:
+        await message.answer("❌ Пользователь не найден.")
+    conn.commit()
+    conn.close()
+    await state.clear()
+
+# ===== ДОБАВЛЕНИЕ КАНАЛА =====
 @dp.message(AddChannel.chat_id)
 async def add_channel_id(message: Message, state: FSMContext):
     await state.update_data(chat_id=message.text.strip())
@@ -590,7 +685,7 @@ async def add_channel_title(message: Message, state: FSMContext):
     conn.close()
     await state.clear()
 
-# Удаление канала
+# ===== УДАЛЕНИЕ КАНАЛА =====
 @dp.message(RemoveChannel.chat_id)
 async def remove_channel(message: Message, state: FSMContext):
     chat_id = message.text.strip()
@@ -605,8 +700,8 @@ async def remove_channel(message: Message, state: FSMContext):
     conn.close()
     await state.clear()
 
-# Добавление товара
-@dp.callback_query(F.data == "admin_shop_add")
+# ===== УПРАВЛЕНИЕ МАГАЗИНОМ (АДМИН) =====
+@dp.callback_query(lambda c: c.data == "admin_shop_add")
 async def shop_add(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Введите название товара:", reply_markup=back_to_admin_keyboard())
     await state.set_state(AddShopItem.name)
@@ -641,8 +736,7 @@ async def shop_add_price(message: Message, state: FSMContext):
     await message.answer(f"✅ Товар '{name}' добавлен с ценой {price}.")
     await state.clear()
 
-# Удаление товара
-@dp.callback_query(F.data == "admin_shop_remove")
+@dp.callback_query(lambda c: c.data == "admin_shop_remove")
 async def shop_remove(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Введите ID товара для удаления:", reply_markup=back_to_admin_keyboard())
     await state.set_state(RemoveShopItem.item_id)
@@ -665,8 +759,7 @@ async def shop_remove_id(message: Message, state: FSMContext):
     conn.close()
     await state.clear()
 
-# Список товаров (админ)
-@dp.callback_query(F.data == "admin_shop_list")
+@dp.callback_query(lambda c: c.data == "admin_shop_list")
 async def shop_list_admin(callback: CallbackQuery):
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
@@ -681,8 +774,8 @@ async def shop_list_admin(callback: CallbackQuery):
         text += f"ID: {item[0]} | {item[1]} | {item[2]} | {item[3]} монет\n"
     await callback.message.edit_text(text, reply_markup=shop_admin_keyboard())
 
-# Создание промокода
-@dp.callback_query(F.data == "admin_promo_create")
+# ===== УПРАВЛЕНИЕ ПРОМОКОДАМИ =====
+@dp.callback_query(lambda c: c.data == "admin_promo_create")
 async def promo_create(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Введите код промокода (латиница, цифры):", reply_markup=back_to_admin_keyboard())
     await state.set_state(CreatePromocode.code)
@@ -726,8 +819,7 @@ async def promo_max_uses(message: Message, state: FSMContext):
     conn.close()
     await state.clear()
 
-# Список промокодов (админ)
-@dp.callback_query(F.data == "admin_promo_list")
+@dp.callback_query(lambda c: c.data == "admin_promo_list")
 async def promo_list_admin(callback: CallbackQuery):
     conn = sqlite3.connect('database.db')
     cur = conn.cursor()
@@ -741,50 +833,6 @@ async def promo_list_admin(callback: CallbackQuery):
     for row in rows:
         text += f"{row[0]}: {row[1]} монет, использовано {row[3]}/{row[2]}\n"
     await callback.message.edit_text(text, reply_markup=promo_admin_keyboard())
-
-# Рассылка
-@dp.message(Broadcast.message)
-async def broadcast_message(message: Message, state: FSMContext):
-    text = message.text
-    conn = sqlite3.connect('database.db')
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM users")
-    users = cur.fetchall()
-    conn.close()
-    success = 0
-    for user in users:
-        try:
-            await bot.send_message(user[0], text)
-            success += 1
-            await asyncio.sleep(0.05)  # чтобы не флудить
-        except:
-            pass
-    await message.answer(f"✅ Рассылка завершена. Отправлено {success} пользователям.")
-    await state.clear()
-
-# Начисление монет
-@dp.message(AddBalance.user_id)
-async def add_balance_user(message: Message, state: FSMContext):
-    parts = message.text.split()
-    if len(parts) != 2:
-        await message.answer("Введите ID и сумму через пробел.")
-        return
-    try:
-        target_id = int(parts[0])
-        amount = int(parts[1])
-    except:
-        await message.answer("Неверный формат.")
-        return
-    conn = sqlite3.connect('database.db')
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, target_id))
-    if cur.rowcount:
-        await message.answer(f"✅ Пользователю {target_id} начислено {amount} монет.")
-    else:
-        await message.answer("❌ Пользователь не найден.")
-    conn.commit()
-    conn.close()
-    await state.clear()
 
 # ===== ЗАПУСК =====
 async def main():
