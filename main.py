@@ -13,7 +13,7 @@ import aiosqlite
 from aiohttp import web
 
 # ===== НАСТРОЙКИ =====
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8336035363:AAGRP57xOcUNjgmbSNs6TnQ1uNtCbe2ryhU")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8336035363:AAFQKr_vngBBvXTJjE7h_OaMU6NF4H2asRY")
 SUPER_ADMINS = [8127013147]  # Полные права
 DB_PATH = 'database.db'
 
