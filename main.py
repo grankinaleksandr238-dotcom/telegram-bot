@@ -12,7 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import aiosqlite
 
 # ===== НАСТРОЙКИ =====
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8336035363:AAElYUVwWI2Le3tg35mLLiJBk8VeCqro6n0")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8336035363:AAHVQIeuOpOW78WcOj7QcNFplOnnR4VNPdQ")
 ADMINS = [8127013147]  # Список админов
 
 # ===== БАЗА ДАННЫХ =====
